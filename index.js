@@ -11,7 +11,7 @@ app.listen(process.env.PORT || 3000, () => console.log('Web sunucusu hazır.'));
 const TOKEN = process.env.DISCORD_TOKEN; 
 const CLIENT_ID = process.env.CLIENT_ID; 
 const GROQ_API_KEY = process.env.GROQ_API_KEY; 
-const FOUNDER_ROLE_ID = "1545688948565606510"; 
+const FOUNDER_ROLE_ID = "1545688948565606510"; // Founder rol ID'n
 
 // Groq Yapılandırması
 const groq = new Groq({ apiKey: GROQ_API_KEY });
@@ -68,6 +68,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    // /tlk KOMUTU (DEĞİŞTİRİLMEDİ)
     if (interaction.commandName === 'tlk') {
         if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
             return interaction.reply({ 
@@ -83,13 +84,14 @@ client.on('interactionCreate', async interaction => {
         await interaction.deleteReply();
     }
 
+    // /ai SLASH KOMUTU (Flash 1.0)
     if (interaction.commandName === 'ai') {
         const soru = interaction.options.getString('soru');
         await interaction.deferReply();
 
         try {
             const completion = await groq.chat.completions.create({
-                model: "llama-3.3-70b-versatile", // Groq üzerindeki en güçlü ücretsiz modellerden biridir
+                model: "openai/gpt-oss-120b",
                 messages: [{ role: "user", content: soru }]
             });
 
@@ -119,7 +121,7 @@ client.on('messageCreate', async message => {
         await message.channel.sendTyping();
 
         const completion = await groq.chat.completions.create({
-            model: "llama-3.3-70b-versatile",
+            model: "openai/gpt-oss-120b",
             messages: [{ role: "user", content: soru }]
         });
 
