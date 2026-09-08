@@ -76,9 +76,12 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     }
 })();
 
-// Şablon Mesaj Oluşturucu
+// Şablon Mesaj Oluşturucu (Özel Emojilerle)
 function videoBildirimMesajiOlustur(videoLink) {
-    return `:golabsnew: Yeni Video Yayında! 🎬\n\nGoLabsReal'dan yeni bir içerik yayınlandı! 🚀\n\n📺 YouTube veya TikTok'ta yayınlanan yeni videoyu aşağıdan izleyebilirsiniz:\n\n${videoLink}\n\n:golabscommunity: Yeni içerikler ve gelişmeler için takipte kalın!\n\n-# GoLabsReal | Otomatik Video Bildirimi`;
+    const emojiNew = "<:golabsnew:1545717178601439262>";
+    const emojiCommunity = "<:golabscommunity:1545730796009300019>";
+
+    return `${emojiNew} Yeni Video Yayında! 🎬\n\nGoLabsReal'dan yeni bir içerik yayınlandı! 🚀\n\n📺 YouTube veya TikTok'ta yayınlanan yeni videoyu aşağıdan izleyebilirsiniz:\n\n${videoLink}\n\n${emojiCommunity} Yeni içerikler ve gelişmeler için takipte kalın!\n\n-# GoLabsReal | Otomatik Video Bildirimi`;
 }
 
 // YOUTUBE OTOMATİK KONTROL FONKSİYONU
