@@ -1,15 +1,27 @@
 const { Client, GatewayIntentBits, REST, Routes, ApplicationCommandOptionType } = require('discord.js');
 const express = require('express');
+const OpenAI = require('openai');
 
-// 1. ADIM: Render/Replit Kesintisiz Çalışma Hilesi (Web Sunucusu)
+// 1. ADIM: Kesintisiz Çalışma Sunucusu (Render/Replit)
 const app = express();
-app.get('/', (req, res) => res.send('Bot aktif!'));
+app.get('/', (req, res) => res.send('GoLabs Bot Aktif!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web sunucusu hazır.'));
 
 // 2. ADIM: Güvenli Çevre Değişkenleri
 const TOKEN = process.env.DISCORD_TOKEN; 
 const CLIENT_ID = process.env.CLIENT_ID; 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
 const FOUNDER_ROLE_ID = "1545688948565606510"; // Founder rol ID'n
+
+// OpenRouter Yapılandırması (Arka planda Llama 4 Scout kullanır)
+const openai = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: OPENROUTER_API_KEY,
+  defaultHeaders: {
+    "HTTP-Referer": "https://discord.com",
+    "X-Title": "GoLabs Bot"
+  }
+});
 
 const client = new Client({ 
     intents: [
@@ -19,7 +31,7 @@ const client = new Client({
     ] 
 });
 
-// Slash Komut Tanımlaması (Mevcut /tlk korundu)
+// Slash Komut Tanımlamaları
 const commands = [
     {
         name: 'tlk',
@@ -28,6 +40,18 @@ const commands = [
             {
                 name: 'mesaj',
                 description: 'Gonderilecek mesajı yazın',
+                type: ApplicationCommandOptionType.String,
+                required: true
+            }
+        ]
+    },
+    {
+        name: 'ai',
+        description: 'Flash 1.0 yapay zeka modeline soru sorun',
+        options: [
+            {
+                name: 'soru',
+                description: 'Yapay zekaya sormak istediğiniz soru',
                 type: ApplicationCommandOptionType.String,
                 required: true
             }
@@ -47,10 +71,11 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     }
 })();
 
-// Slash Komut Çalıştığında Tetiklenecek Kısım
+// Slash Komut Dinleyicisi
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    // MEVCUT /tlk KOMUTU (DEĞİŞTİRİLMEDİ)
     if (interaction.commandName === 'tlk') {
         if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
             return interaction.reply({ 
@@ -65,49 +90,59 @@ client.on('interactionCreate', async interaction => {
         await interaction.channel.send(gonderilecekMesaj);
         await interaction.deleteReply();
     }
+
+    // YENİ: /ai SLASH KOMUTU (Flash 1.0)
+    if (interaction.commandName === 'ai') {
+        const soru = interaction.options.getString('soru');
+        await interaction.deferReply();
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "meta-llama/llama-4-scout",
+                messages: [{ role: "user", content: soru }]
+            });
+
+            const cevap = completion.choices[0].message.content;
+
+            if (cevap.length > 2000) {
+                await interaction.editReply(cevap.slice(0, 1990) + '...');
+            } else {
+                await interaction.editReply(cevap);
+            }
+        } catch (error) {
+            console.error('Flash 1.0 AI Hatası:', error);
+            await interaction.editReply('❌ Flash 1.0 yanıt oluştururken bir sorunla karşılaştı.');
+        }
+    }
 });
 
-// AUTOMOD KOMUTU (!automod-kur / !automod-bas)
+// YENİ: BOTA ETİKET ATARAK KONUŞMA (@GoLabs Bot <soru>)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
-    
-    const icerik = message.content.toLowerCase();
+    if (!message.mentions.has(client.user)) return;
 
-    if (icerik === '!automod-kur' || icerik === '!automod-bas') {
-        const bilgiMesaji = await message.reply('⏳ Tüm sunucularda AutoMod kuralları oluşturuluyor, lütfen bekleyin...');
+    // Etiket kısmını temizleyip soruyu alıyoruz
+    const soru = message.content.replace(`<@${client.user.id}>`, '').replace(`<@!${client.user.id}>`, '').trim();
+    if (!soru) return message.reply("Merhaba! Flash 1.0 modeliyle sana nasıl yardımcı olabilirim?");
 
-        let toplamKurulanKural = 0;
-        let basariliSunucu = 0;
+    try {
+        await message.channel.sendTyping(); // Bot yazıyor... efektini başlatır
 
-        for (const guild of client.guilds.cache.values()) {
-            try {
-                for (let i = 1; i <= 6; i++) {
-                    await guild.autoModerationRules.create({
-                        name: `Rozet Kurali ${i}`,
-                        eventType: 1, // 1 = MessageSend
-                        triggerType: 1, // 1 = Keyword
-                        triggerMetadata: {
-                            keywordFilter: [`rozetkelime${i}`]
-                        },
-                        actions: [
-                            {
-                                type: 1, // 1 = BlockMessage
-                                metadata: {
-                                    customMessage: 'Bu mesaj AutoMod tarafindan engellendi.'
-                                }
-                            }
-                        ],
-                        enabled: true
-                    });
-                    toplamKurulanKural++;
-                }
-                basariliSunucu++;
-            } catch (err) {
-                console.error(`${guild.name} sunucusunda AutoMod kuralı oluşturulamadı:`, err.message);
-            }
+        const completion = await openai.chat.completions.create({
+            model: "meta-llama/llama-4-scout",
+            messages: [{ role: "user", content: soru }]
+        });
+
+        const cevap = completion.choices[0].message.content;
+
+        if (cevap.length > 2000) {
+            await message.reply(cevap.slice(0, 1990) + '...');
+        } else {
+            await message.reply(cevap);
         }
-
-        await bilgiMesaji.edit(`✅ **İşlem Tamamlandı!**\nBaşarılı Sunucu Sayısı: **${basariliSunucu}**\nOluşturulan Toplam AutoMod Kuralı: **${toplamKurulanKural}**\n\n*(Discord Geliştirici Portalında rozet durumunun güncellenmesi biraz zaman alabilir.)*`);
+    } catch (error) {
+        console.error('Flash 1.0 AI Hatası:', error);
+        await message.reply('❌ Yanıt oluşturulamadı.');
     }
 });
 
