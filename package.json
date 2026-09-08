@@ -1,13 +1,14 @@
 {
   "name": "tlk-bot",
-  "version": "1.0.0",
-  "description": "Founder ozel konusma botu",
+  "version": "1.1.0",
+  "description": "GoLabs Bot - AI Destekli Asistan",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "openai": "^4.33.0"
   }
 }
