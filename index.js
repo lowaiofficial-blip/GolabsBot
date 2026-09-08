@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, REST, Routes, ApplicationCommandOptionType } = require('discord.js');
 const express = require('express');
-const OpenAI = require('openai');
+const Groq = require('groq-sdk');
 
 // 1. ADIM: Kesintisiz Çalışma Sunucusu (Render/Replit)
 const app = express();
@@ -10,18 +10,11 @@ app.listen(process.env.PORT || 3000, () => console.log('Web sunucusu hazır.'));
 // 2. ADIM: Güvenli Çevre Değişkenleri
 const TOKEN = process.env.DISCORD_TOKEN; 
 const CLIENT_ID = process.env.CLIENT_ID; 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
-const FOUNDER_ROLE_ID = "1545688948565606510"; // Founder rol ID'n
+const GROQ_API_KEY = process.env.GROQ_API_KEY; 
+const FOUNDER_ROLE_ID = "1545688948565606510"; 
 
-// OpenRouter Yapılandırması (Arka planda Llama 4 Scout kullanır)
-const openai = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: OPENROUTER_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": "https://discord.com",
-    "X-Title": "GoLabs Bot"
-  }
-});
+// Groq Yapılandırması
+const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 const client = new Client({ 
     intents: [
@@ -75,7 +68,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    // MEVCUT /tlk KOMUTU (DEĞİŞTİRİLMEDİ)
     if (interaction.commandName === 'tlk') {
         if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
             return interaction.reply({ 
@@ -91,14 +83,13 @@ client.on('interactionCreate', async interaction => {
         await interaction.deleteReply();
     }
 
-    // YENİ: /ai SLASH KOMUTU (Flash 1.0)
     if (interaction.commandName === 'ai') {
         const soru = interaction.options.getString('soru');
         await interaction.deferReply();
 
         try {
-            const completion = await openai.chat.completions.create({
-                model: "meta-llama/llama-4-scout",
+            const completion = await groq.chat.completions.create({
+                model: "llama-3.3-70b-versatile", // Groq üzerindeki en güçlü ücretsiz modellerden biridir
                 messages: [{ role: "user", content: soru }]
             });
 
@@ -116,20 +107,19 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// YENİ: BOTA ETİKET ATARAK KONUŞMA (@GoLabs Bot <soru>)
+// BOTA ETİKET ATARAK KONUŞMA (@GoLabs Bot <soru>)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.mentions.has(client.user)) return;
 
-    // Etiket kısmını temizleyip soruyu alıyoruz
     const soru = message.content.replace(`<@${client.user.id}>`, '').replace(`<@!${client.user.id}>`, '').trim();
     if (!soru) return message.reply("Merhaba! Flash 1.0 modeliyle sana nasıl yardımcı olabilirim?");
 
     try {
-        await message.channel.sendTyping(); // Bot yazıyor... efektini başlatır
+        await message.channel.sendTyping();
 
-        const completion = await openai.chat.completions.create({
-            model: "meta-llama/llama-4-scout",
+        const completion = await groq.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
             messages: [{ role: "user", content: soru }]
         });
 
