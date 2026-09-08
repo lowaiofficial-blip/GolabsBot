@@ -1,7 +1,7 @@
 {
-  "name": "tlk-bot",
-  "version": "1.1.0",
-  "description": "GoLabs Bot - AI Destekli Asistan",
+  "name": "golabs-bot",
+  "version": "1.0.0",
+  "description": "GoLabs Bot - AI ve Otomatik Video Bildirim Botu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "express": "^4.19.2",
-    "groq-sdk": "^0.3.3"
+    "groq-sdk": "^0.3.3",
+    "rss-parser": "^3.13.0"
   }
 }
