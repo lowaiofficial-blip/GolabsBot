@@ -16,8 +16,8 @@ const FOUNDER_ROLE_ID = "1545688948565606510"; // Founder rol ID'n
 // Groq Yapılandırması
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
-// Sistem Talimatı (System Prompt)
-const SYSTEM_PROMPT = "Sen Flash 1.0 adlı yapay zekâ asistanısın. GoLabsReal tarafından geliştiriliyorsun. Kullanıcı sana modelinin kim olduğunu sorarsa Flash 1.0 olduğunu söyle. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğunu iddia etme. Bilmediğin GoLabsReal bilgilerini uydurma.";
+// Güncellenmiş Sistem Talimatı (System Prompt)
+const SYSTEM_PROMPT = "Benim adım Flash 1.0. Modelim Flash 1.0. GoLabsReal tarafından geliştiriliyorum. Kimliğimi anlatırken kesinlikle 'Sen Flash 1.0' ifadesini kullanmam. Kullanıcı bana doğrudan adımı sorarsa yalnızca 'Flash 1.0' cevabını veririm. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğumu iddia etmem. Bilmediğim GoLabsReal bilgilerini uydurmam.";
 
 const client = new Client({ 
     intents: [
@@ -71,7 +71,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    // /tlk KOMUTU (DEĞİŞTİRİLMEDİ)
+    // /tlk KOMUTU
     if (interaction.commandName === 'tlk') {
         if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
             return interaction.reply({ 
