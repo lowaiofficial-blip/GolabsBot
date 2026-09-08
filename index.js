@@ -16,6 +16,9 @@ const FOUNDER_ROLE_ID = "1545688948565606510"; // Founder rol ID'n
 // Groq Yapılandırması
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
+// Sistem Talimatı (System Prompt)
+const SYSTEM_PROMPT = "Sen Flash 1.0 adlı yapay zekâ asistanısın. GoLabsReal tarafından geliştiriliyorsun. Kullanıcı sana modelinin kim olduğunu sorarsa Flash 1.0 olduğunu söyle. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğunu iddia etme. Bilmediğin GoLabsReal bilgilerini uydurma.";
+
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
@@ -92,7 +95,10 @@ client.on('interactionCreate', async interaction => {
         try {
             const completion = await groq.chat.completions.create({
                 model: "openai/gpt-oss-120b",
-                messages: [{ role: "user", content: soru }]
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: soru }
+                ]
             });
 
             const cevap = completion.choices[0].message.content;
@@ -115,14 +121,17 @@ client.on('messageCreate', async message => {
     if (!message.mentions.has(client.user)) return;
 
     const soru = message.content.replace(`<@${client.user.id}>`, '').replace(`<@!${client.user.id}>`, '').trim();
-    if (!soru) return message.reply("Merhaba! Flash 1.0 modeliyle sana nasıl yardımcı olabilirim?");
+    if (!soru) return message.reply("Merhaba! Ben Flash 1.0. Sana nasıl yardımcı olabilirim?");
 
     try {
         await message.channel.sendTyping();
 
         const completion = await groq.chat.completions.create({
             model: "openai/gpt-oss-120b",
-            messages: [{ role: "user", content: soru }]
+            messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: soru }
+            ]
         });
 
         const cevap = completion.choices[0].message.content;
