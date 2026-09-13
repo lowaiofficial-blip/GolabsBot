@@ -1,11 +1,25 @@
-const { Client, GatewayIntentBits, REST, Routes, ApplicationCommandOptionType } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    REST, 
+    Routes, 
+    ApplicationCommandOptionType,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+    PermissionFlagsBits,
+    EmbedBuilder
+} = require('discord.js');
 const express = require('express');
 const Groq = require('groq-sdk');
 const Parser = require('rss-parser');
+const fs = require('fs');
+const path = require('path');
 
 const parser = new Parser();
 
-// 1. ADIM: Web Sunucusu (Render/Replit için)
+// 1. ADIM: Web Sunucusu
 const app = express();
 app.use(express.json());
 
@@ -22,7 +36,26 @@ const FOUNDER_ROLE_ID = "1545688948565606510";
 const GELISTIRMELER_KANAL_ID = "1545688090792697936"; 
 const YOUTUBE_CHANNEL_ID = "UCygNu7owOCOnLaW7Y91rFOg"; 
 
-let sonGonderilenVideoId = ""; // Eski videoların karışmasını önleyen hafıza değişkeni
+let sonGonderilenVideoId = ""; 
+
+// Bilet Sayacı Yönetimi (Dosya tabanlı kayıt)
+const COUNTER_FILE = path.join(__dirname, 'ticket-counter.json');
+
+function getNextTicketNumber() {
+    let count = 1;
+    if (fs.existsSync(COUNTER_FILE)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8'));
+            count = (data.count || 0) + 1;
+        } catch (e) {
+            count = 1;
+        }
+    }
+    fs.writeFileSync(COUNTER_FILE, JSON.stringify({ count }), 'utf8');
+    
+    // 9999'a kadar 4 basamaklı sıfır doldurma (0001, 0002), sonrasında normal sayı
+    return count < 10000 ? String(count).padStart(4, '0') : String(count);
+}
 
 // Groq Yapılandırması & Sistem Talimatı
 const groq = new Groq({ apiKey: GROQ_API_KEY });
@@ -35,6 +68,9 @@ const client = new Client({
         GatewayIntentBits.MessageContent
     ] 
 });
+
+// Kurulum Konfigürasyonunu Saklama (Geçici Bellek)
+const ticketConfigs = new Map();
 
 // Slash Komut Tanımlamaları
 const commands = [
@@ -61,6 +97,26 @@ const commands = [
                 required: true
             }
         ]
+    },
+    {
+        name: 'ticket-kur',
+        description: 'Destek talebi panelini ve hedeflenen kategoriyi kurar',
+        options: [
+            {
+                name: 'kanal',
+                description: 'Panelin gönderileceği kanalı seçin',
+                type: ApplicationCommandOptionType.Channel,
+                channel_types: [ChannelType.GuildText],
+                required: true
+            },
+            {
+                name: 'kategori',
+                description: 'Ticket kanallarının açılacağı kategoriyi seçin',
+                type: ApplicationCommandOptionType.Channel,
+                channel_types: [ChannelType.GuildCategory],
+                required: true
+            }
+        ]
     }
 ];
 
@@ -76,7 +132,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     }
 })();
 
-// Şablon Mesaj Oluşturucu (Özel Emojilerle)
+// Şablon Mesaj Oluşturucu
 function videoBildirimMesajiOlustur(videoLink) {
     const emojiNew = "<:golabsnew:1545717178601439262>";
     const emojiCommunity = "<:golabscommunity:1545730796009300019>";
@@ -91,19 +147,17 @@ async function youtubeVideoKontrolEt() {
         if (feed.items && feed.items.length > 0) {
             const enSonVideo = feed.items[0];
 
-            // Bot ilk defa açılıyorsa en son videoyu hafızaya kaydet ama mesaj ATMA
             if (!sonGonderilenVideoId) {
                 sonGonderilenVideoId = enSonVideo.id;
                 return;
             }
 
-            // Sadece bot çalışırken yepyeni bir video yüklendiğinde mesaj at
             if (sonGonderilenVideoId !== enSonVideo.id) {
                 const kanal = await client.channels.fetch(GELISTIRMELER_KANAL_ID);
                 if (kanal) {
                     await kanal.send(videoBildirimMesajiOlustur(enSonVideo.link));
                 }
-                sonGonderilenVideoId = enSonVideo.id; // Yeni video ID'sini hafızaya kaydet
+                sonGonderilenVideoId = enSonVideo.id;
             }
         }
     } catch (error) {
@@ -111,18 +165,14 @@ async function youtubeVideoKontrolEt() {
     }
 }
 
-// Bot Hazır Olduğunda Dönen Alan
+// Bot Hazır Olduğunda
 client.once('ready', () => {
     console.log(`${client.user.tag} olarak giriş yapıldı!`);
-    
-    // Açılışta mevcut son videoyu hafızaya al
     youtubeVideoKontrolEt();
-
-    // Her 5 dakikada bir yeni video gelip gelmediğini denetle
     setInterval(youtubeVideoKontrolEt, 5 * 60 * 1000);
 });
 
-// TIKTOK VE HARİCİ BİLDİRİMLER İÇİN WEBHOOK ENDPOINT'İ
+// TIKTOK WEBHOOK ENDPOINT'İ
 app.post('/tiktok-webhook', async (req, res) => {
     const { video_link } = req.body;
     if (!video_link) return res.status(400).send('video_link parametresi gerekli.');
@@ -139,47 +189,159 @@ app.post('/tiktok-webhook', async (req, res) => {
     }
 });
 
-// Slash Komut Dinleyicisi
+// Interaction Dinleyicisi
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'tlk') {
-        if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
-            return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', ephemeral: true });
+    
+    // 1. SLASH KOMUTLARI
+    if (interaction.isChatInputCommand()) {
+        
+        if (interaction.commandName === 'tlk') {
+            if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
+                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', ephemeral: true });
+            }
+            const gonderilecekMesaj = interaction.options.getString('mesaj');
+            await interaction.deferReply({ ephemeral: true });
+            await interaction.channel.send(gonderilecekMesaj);
+            await interaction.deleteReply();
         }
-        const gonderilecekMesaj = interaction.options.getString('mesaj');
-        await interaction.deferReply({ ephemeral: true });
-        await interaction.channel.send(gonderilecekMesaj);
-        await interaction.deleteReply();
+
+        if (interaction.commandName === 'ai') {
+            const soru = interaction.options.getString('soru');
+            await interaction.deferReply();
+
+            try {
+                const completion = await groq.chat.completions.create({
+                    model: "openai/gpt-oss-120b",
+                    messages: [
+                        { role: "system", content: SYSTEM_PROMPT },
+                        { role: "user", content: soru }
+                    ]
+                });
+
+                const cevap = completion.choices[0].message.content;
+                if (cevap.length > 2000) {
+                    await interaction.editReply(cevap.slice(0, 1990) + '...');
+                } else {
+                    await interaction.editReply(cevap);
+                }
+            } catch (error) {
+                console.error('Flash 1.0 AI Hatası:', error);
+                await interaction.editReply('❌ Flash 1.0 yanıt oluştururken bir sorunla karşılaştı.');
+            }
+        }
+
+        // /ticket-kur Komutu
+        if (interaction.commandName === 'ticket-kur') {
+            if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
+                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', ephemeral: true });
+            }
+
+            const hedefKanal = interaction.options.getChannel('kanal');
+            const hedefKategori = interaction.options.getChannel('kategori');
+
+            // Ayarı sunucu özelinde kaydet
+            ticketConfigs.set(interaction.guildId, hedefKategori.id);
+
+            const ticketEmbed = new EmbedBuilder()
+                .setTitle('🛠️ GoLabsReal Destek Merkezi')
+                .setDescription('Bir konuda yardıma veya yetkili desteğine mi ihtiyacınız var?\n\nAşağıdaki **"📩 Destek Talebi Oluştur"** butonuna tıklayarak size özel bilet kanalınızı başlatabilirsiniz.')
+                .setColor(0x5865F2)
+                .setFooter({ text: 'GoLabsReal | Otomatik Destek Sistemi' });
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('ticket_olustur')
+                    .setLabel('📩 Destek Talebi Oluştur')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            await hedefKanal.send({
+                embeds: [ticketEmbed],
+                components: [row]
+            });
+
+            await interaction.reply({ 
+                content: `✅ Destek paneli ${hedefKanal} kanalına kuruldu. Yeni talepler **${hedefKategori.name}** kategorisi altında açılacak.`, 
+                ephemeral: true 
+            });
+        }
     }
 
-    if (interaction.commandName === 'ai') {
-        const soru = interaction.options.getString('soru');
-        await interaction.deferReply();
+    // 2. BUTON ETKİLEŞİMLERİ (TICKET AÇMA / KAPATMA)
+    if (interaction.isButton()) {
+        
+        // Destek Oluştur Butonu
+        if (interaction.customId === 'ticket_olustur') {
+            const guild = interaction.guild;
+            const user = interaction.user;
 
-        try {
-            const completion = await groq.chat.completions.create({
-                model: "openai/gpt-oss-120b",
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: soru }
+            // Kullanıcının hali hazırda açık kanalı var mı kontrol et
+            const varOlanKanal = guild.channels.cache.find(c => c.topic === user.id);
+            if (varOlanKanal) {
+                return interaction.reply({ content: `❌ Zaten açık bir destek talebiniz bulunuyor: ${varOlanKanal}`, ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            const numara = getNextTicketNumber();
+            const kanalAdi = `ticket-${numara}`;
+            const kategoriId = ticketConfigs.get(guild.id);
+
+            // Gizli Destek Kanalını Belirtilen Kategoride Oluştur
+            const ticketKanal = await guild.channels.create({
+                name: kanalAdi,
+                type: ChannelType.GuildText,
+                parent: kategoriId || null,
+                topic: user.id, // Kullanıcı ID'sini kanal başlığına saklayarak kontrol sağlama
+                permissionOverwrites: [
+                    {
+                        id: guild.id, // Herkese kapat
+                        deny: [PermissionFlagsBits.ViewChannel]
+                    },
+                    {
+                        id: user.id, // Bilet sahibine aç
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles]
+                    },
+                    {
+                        id: FOUNDER_ROLE_ID, // Founder rolüne aç
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles]
+                    }
                 ]
             });
 
-            const cevap = completion.choices[0].message.content;
-            if (cevap.length > 2000) {
-                await interaction.editReply(cevap.slice(0, 1990) + '...');
-            } else {
-                await interaction.editReply(cevap);
-            }
-        } catch (error) {
-            console.error('Flash 1.0 AI Hatası:', error);
-            await interaction.editReply('❌ Flash 1.0 yanıt oluştururken bir sorunla karşılaştı.');
+            const welcomeEmbed = new EmbedBuilder()
+                .setTitle(`🎫 Destek Talebi #${numara}`)
+                .setDescription(`Merhaba ${user},\n\nDestek talebiniz başarıyla oluşturuldu. Yetkili ekibimiz en kısa sürede sizinle iletişime geçecektir.\n\nLütfen sorununuzu detaylıca açıklayın. İşiniz bittiğinde **"🔒 Talebi Kapat"** butonuna basabilirsiniz.`)
+                .setColor(0x57F287)
+                .setTimestamp();
+
+            const closeRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('ticket_kapat')
+                    .setLabel('🔒 Talebi Kapat')
+                    .setStyle(ButtonStyle.Danger)
+            );
+
+            await ticketKanal.send({
+                content: `${user} | <@&${FOUNDER_ROLE_ID}>`,
+                embeds: [welcomeEmbed],
+                components: [closeRow]
+            });
+
+            await interaction.editReply({ content: `✅ Destek kanalınız oluşturuldu: ${ticketKanal}` });
+        }
+
+        // Destek Kapat Butonu
+        if (interaction.customId === 'ticket_kapat') {
+            await interaction.reply("🔒 Destek talebi kapatılıyor, kanal 5 saniye içinde silinecektir...");
+            setTimeout(() => {
+                interaction.channel.delete().catch(() => {});
+            }, 5000);
         }
     }
 });
 
-// Bota Etiket Atarak Konuşma (@GoLabs Bot <soru>)
+// Bota Etiket Atarak Konuşma
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.mentions.has(client.user)) return;
