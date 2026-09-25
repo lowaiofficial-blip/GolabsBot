@@ -55,9 +55,22 @@ function getNextTicketNumber() {
     return count < 10000 ? String(count).padStart(4, '0') : String(count);
 }
 
-// System Prompt & Model Yapılandırması
-const SYSTEM_PROMPT = "Benim adım Flash 1.0. Modelim Flash 1.0. GoLabsReal tarafından geliştiriliyorum. Kimliğimi anlatırken kesinlikle 'Sen Flash 1.0' ifadesini kullanmam. Kullanıcı bana doğrudan adımı sorarsa yalnızca 'Flash 1.0' cevabını veririm. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğumu iddia etmem. Bilmediğim GoLabsReal bilgilerini uydurmam.";
-const AI_MODEL = "deepseek/deepseek-v4-flash-0731";
+// YENİ MODEL VE GELİŞTİRİLMİŞ SYSTEM PROMPT
+const AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+
+const SYSTEM_PROMPT = `
+Sen GoLabsReal topluluğu için özel olarak geliştirilmiş akıllı bir yapay zeka asistanısın.
+Adın: Flash 1.0
+
+KİMLİK VE KURALLAR:
+1. Sen "Flash 1.0" modelisin ve GoLabsReal tarafından geliştirildin.
+2. Kendini tanıtırken veya kimliğin sorulduğunda doğrudan ve net bir şekilde "Flash 1.0" olduğunu söyle.
+3. Asla OpenAI, ChatGPT, GPT-4, NVIDIA, DeepSeek veya başka bir yapay zeka sağlayıcısı veya modeli olduğunu iddia etme ya da bundan bahsetme.
+4. "Sen Flash 1.0" gibi üçüncü şahıs ifadeler kullanma, her zaman kendi adına (birinci şahıs) konuş.
+5. Kullanıcılara saygılı, yardımsever, net ve samimi bir dille Türkçe yanıt ver.
+6. Kod sorularına anlaşılır, doğrudan çalışan ve açıklayıcı Markdown kod bloklarıyla yanıt ver.
+7. Bilmediğin GoLabsReal içi özel bilgileri uydurma, bilmediğini kibarca belirt.
+`.trim();
 
 // OpenRouter API İsteği atan ortak fonksiyon
 async function openRouterYapayZekaCevap(soru) {
@@ -235,14 +248,31 @@ client.on('interactionCreate', async interaction => {
             const soru = interaction.options.getString('soru');
             await interaction.deferReply();
 
+            // Animasyonlu "Düşünüyorum..." efekti
+            const dusunuyorumMesajlari = [
+                "💭 Düşünüyorum.",
+                "💭 Düşünüyorum..",
+                "💭 Düşünüyorum...",
+                "💭 Düşünüyorum...."
+            ];
+            let adim = 0;
+
+            const interval = setInterval(async () => {
+                adim = (adim + 1) % dusunuyorumMesajlari.length;
+                await interaction.editReply(dusunuyorumMesajlari[adim]).catch(() => {});
+            }, 1500);
+
             try {
                 const cevap = await openRouterYapayZekaCevap(soru);
+                clearInterval(interval); // Animasyonu durdur
+
                 if (cevap.length > 2000) {
                     await interaction.editReply(cevap.slice(0, 1990) + '...');
                 } else {
                     await interaction.editReply(cevap);
                 }
             } catch (error) {
+                clearInterval(interval); // Hata durumunda da durdur
                 console.error('Flash 1.0 AI Hatası:', error);
                 await interaction.editReply('❌ Flash 1.0 yanıt oluştururken bir sorunla karşılaştı.');
             }
@@ -367,11 +397,30 @@ client.on('messageCreate', async message => {
     try {
         await message.channel.sendTyping();
 
+        // İlk "Düşünüyorum." mesajını gönder
+        const dusunMesaji = await message.reply("💭 Düşünüyorum.");
+
+        const dusunuyorumMesajlari = [
+            "💭 Düşünüyorum.",
+            "💭 Düşünüyorum..",
+            "💭 Düşünüyorum...",
+            "💭 Düşünüyorum...."
+        ];
+        let adim = 0;
+
+        // Her 1.5 saniyede bir noktaları güncelle
+        const interval = setInterval(async () => {
+            adim = (adim + 1) % dusunuyorumMesajlari.length;
+            await dusunMesaji.edit(dusunuyorumMesajlari[adim]).catch(() => {});
+        }, 1500);
+
         const cevap = await openRouterYapayZekaCevap(soru);
+        clearInterval(interval); // Yanıt gelince animasyonu durdur
+
         if (cevap.length > 2000) {
-            await message.reply(cevap.slice(0, 1990) + '...');
+            await dusunMesaji.edit(cevap.slice(0, 1990) + '...');
         } else {
-            await message.reply(cevap);
+            await dusunMesaji.edit(cevap);
         }
     } catch (error) {
         console.error('Flash 1.0 AI Hatası:', error);
