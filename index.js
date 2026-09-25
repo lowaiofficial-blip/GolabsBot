@@ -12,7 +12,6 @@ const {
     EmbedBuilder
 } = require('discord.js');
 const express = require('express');
-const Groq = require('groq-sdk');
 const Parser = require('rss-parser');
 const fs = require('fs');
 const path = require('path');
@@ -29,7 +28,7 @@ app.listen(process.env.PORT || 3000, () => console.log('Web sunucusu hazır.'));
 // 2. ADIM: Güvenli Çevre Değişkenleri ve Sabitler
 const TOKEN = process.env.DISCORD_TOKEN; 
 const CLIENT_ID = process.env.CLIENT_ID; 
-const GROQ_API_KEY = process.env.GROQ_API_KEY; 
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY; 
 const FOUNDER_ROLE_ID = "1545688948565606510"; 
 
 // BİLDİRİM KANAL VE YOUTUBE AYARLARI
@@ -52,14 +51,40 @@ function getNextTicketNumber() {
         }
     }
     fs.writeFileSync(COUNTER_FILE, JSON.stringify({ count }), 'utf8');
-    
-    // 9999'a kadar 4 basamaklı sıfır doldurma (0001, 0002), sonrasında normal sayı
     return count < 10000 ? String(count).padStart(4, '0') : String(count);
 }
 
-// Groq Yapılandırması & Sistem Talimatı
-const groq = new Groq({ apiKey: GROQ_API_KEY });
+// System Prompt & Model Yapılandırması
 const SYSTEM_PROMPT = "Benim adım Flash 1.0. Modelim Flash 1.0. GoLabsReal tarafından geliştiriliyorum. Kimliğimi anlatırken kesinlikle 'Sen Flash 1.0' ifadesini kullanmam. Kullanıcı bana doğrudan adımı sorarsa yalnızca 'Flash 1.0' cevabını veririm. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğumu iddia etmem. Bilmediğim GoLabsReal bilgilerini uydurmam.";
+const AI_MODEL = "deepseek/deepseek-v4-flash-0731:free";
+
+// OpenRouter API İsteği atan ortak fonksiyon
+async function openRouterYapayZekaCevap(soru) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+            "HTTP-Referer": "https://discord.com",
+            "X-Title": "GoLabs Bot",
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            model: AI_MODEL,
+            messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: soru }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter API Hatası: ${response.status} - ${errText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
 
 const client = new Client({ 
     intents: [
@@ -210,15 +235,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
 
             try {
-                const completion = await groq.chat.completions.create({
-                    model: "openai/gpt-oss-120b",
-                    messages: [
-                        { role: "system", content: SYSTEM_PROMPT },
-                        { role: "user", content: soru }
-                    ]
-                });
-
-                const cevap = completion.choices[0].message.content;
+                const cevap = await openRouterYapayZekaCevap(soru);
                 if (cevap.length > 2000) {
                     await interaction.editReply(cevap.slice(0, 1990) + '...');
                 } else {
@@ -239,7 +256,6 @@ client.on('interactionCreate', async interaction => {
             const hedefKanal = interaction.options.getChannel('kanal');
             const hedefKategori = interaction.options.getChannel('kategori');
 
-            // Ayarı sunucu özelinde kaydet
             ticketConfigs.set(interaction.guildId, hedefKategori.id);
 
             const ticketEmbed = new EmbedBuilder()
@@ -275,7 +291,6 @@ client.on('interactionCreate', async interaction => {
             const guild = interaction.guild;
             const user = interaction.user;
 
-            // Kullanıcının hali hazırda açık kanalı var mı kontrol et
             const varOlanKanal = guild.channels.cache.find(c => c.topic === user.id);
             if (varOlanKanal) {
                 return interaction.reply({ content: `❌ Zaten açık bir destek talebiniz bulunuyor: ${varOlanKanal}`, ephemeral: true });
@@ -287,23 +302,22 @@ client.on('interactionCreate', async interaction => {
             const kanalAdi = `ticket-${numara}`;
             const kategoriId = ticketConfigs.get(guild.id);
 
-            // Gizli Destek Kanalını Belirtilen Kategoride Oluştur
             const ticketKanal = await guild.channels.create({
                 name: kanalAdi,
                 type: ChannelType.GuildText,
                 parent: kategoriId || null,
-                topic: user.id, // Kullanıcı ID'sini kanal başlığına saklayarak kontrol sağlama
+                topic: user.id,
                 permissionOverwrites: [
                     {
-                        id: guild.id, // Herkese kapat
+                        id: guild.id,
                         deny: [PermissionFlagsBits.ViewChannel]
                     },
                     {
-                        id: user.id, // Bilet sahibine aç
+                        id: user.id,
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles]
                     },
                     {
-                        id: FOUNDER_ROLE_ID, // Founder rolüne aç
+                        id: FOUNDER_ROLE_ID,
                         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles]
                     }
                 ]
@@ -341,7 +355,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Bota Etiket Atarak Konuşma
+// Bota Etiket Atarak Konuşma (@Flash 1.0)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
     if (!message.mentions.has(client.user)) return;
@@ -352,15 +366,7 @@ client.on('messageCreate', async message => {
     try {
         await message.channel.sendTyping();
 
-        const completion = await groq.chat.completions.create({
-            model: "openai/gpt-oss-120b",
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: soru }
-            ]
-        });
-
-        const cevap = completion.choices[0].message.content;
+        const cevap = await openRouterYapayZekaCevap(soru);
         if (cevap.length > 2000) {
             await message.reply(cevap.slice(0, 1990) + '...');
         } else {
