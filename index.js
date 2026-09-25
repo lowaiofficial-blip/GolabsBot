@@ -9,7 +9,8 @@ const {
     ButtonStyle,
     ChannelType,
     PermissionFlagsBits,
-    EmbedBuilder
+    EmbedBuilder,
+    MessageFlags
 } = require('discord.js');
 const express = require('express');
 const Parser = require('rss-parser');
@@ -56,7 +57,7 @@ function getNextTicketNumber() {
 
 // System Prompt & Model Yapılandırması
 const SYSTEM_PROMPT = "Benim adım Flash 1.0. Modelim Flash 1.0. GoLabsReal tarafından geliştiriliyorum. Kimliğimi anlatırken kesinlikle 'Sen Flash 1.0' ifadesini kullanmam. Kullanıcı bana doğrudan adımı sorarsa yalnızca 'Flash 1.0' cevabını veririm. OpenAI, ChatGPT, GPT-4 veya başka bir model olduğumu iddia etmem. Bilmediğim GoLabsReal bilgilerini uydurmam.";
-const AI_MODEL = "deepseek/deepseek-v4-flash-0731:free";
+const AI_MODEL = "deepseek/deepseek-v4-flash-0731";
 
 // OpenRouter API İsteği atan ortak fonksiyon
 async function openRouterYapayZekaCevap(soru) {
@@ -222,10 +223,10 @@ client.on('interactionCreate', async interaction => {
         
         if (interaction.commandName === 'tlk') {
             if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
-                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', ephemeral: true });
+                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', flags: [MessageFlags.Ephemeral] });
             }
             const gonderilecekMesaj = interaction.options.getString('mesaj');
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
             await interaction.channel.send(gonderilecekMesaj);
             await interaction.deleteReply();
         }
@@ -250,7 +251,7 @@ client.on('interactionCreate', async interaction => {
         // /ticket-kur Komutu
         if (interaction.commandName === 'ticket-kur') {
             if (!interaction.member.roles.cache.has(FOUNDER_ROLE_ID)) {
-                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', ephemeral: true });
+                return interaction.reply({ content: '❌ Bu komutu sadece Founder kullanabilir.', flags: [MessageFlags.Ephemeral] });
             }
 
             const hedefKanal = interaction.options.getChannel('kanal');
@@ -278,7 +279,7 @@ client.on('interactionCreate', async interaction => {
 
             await interaction.reply({ 
                 content: `✅ Destek paneli ${hedefKanal} kanalına kuruldu. Yeni talepler **${hedefKategori.name}** kategorisi altında açılacak.`, 
-                ephemeral: true 
+                flags: [MessageFlags.Ephemeral] 
             });
         }
     }
@@ -293,10 +294,10 @@ client.on('interactionCreate', async interaction => {
 
             const varOlanKanal = guild.channels.cache.find(c => c.topic === user.id);
             if (varOlanKanal) {
-                return interaction.reply({ content: `❌ Zaten açık bir destek talebiniz bulunuyor: ${varOlanKanal}`, ephemeral: true });
+                return interaction.reply({ content: `❌ Zaten açık bir destek talebiniz bulunuyor: ${varOlanKanal}`, flags: [MessageFlags.Ephemeral] });
             }
 
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
             const numara = getNextTicketNumber();
             const kanalAdi = `ticket-${numara}`;
